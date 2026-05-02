@@ -2,6 +2,10 @@ from pyrogram import Client, filters
 from pymongo import MongoClient
 import os
 
+@app.on_message(filters.command("start"))
+def start(client, message):
+    message.reply_text("Hello! 👋\nFile bhejo ya naam search karo 📁")
+    
 api_id = int(os.getenv("24332123"))
 api_hash = os.getenv("abc2e4ec18e92c57c20e246410f8fb38")
 bot_token = os.getenv("8654165456:AAFhEm3KFGKchPMK_MFJhMNy3zX_cmLtZQE")
