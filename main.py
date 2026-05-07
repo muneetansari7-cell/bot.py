@@ -1,4 +1,5 @@
 import logging
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -16,7 +17,7 @@ from telegram.ext import (
 # ─────────────────────────────────────────────
 #  CONFIGURATION  ←  Fill these in
 # ─────────────────────────────────────────────
-BOT_TOKEN = "abc2e4ec18e92c57c20e246410f8fb38"   # From @BotFather
+BOT_TOKEN = "8795852939:AAHi2a9gscuzyUywzgwpE0Qv-9k9LShptf0"   # From @BotFather
 DB_CHANNEL_ID = -1003897916058                    # Your file-storage channel/group ID (negative number)
 # ─────────────────────────────────────────────
 
