@@ -228,8 +228,8 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
         f"🔍 Found *{len(results)}* file(s) matching *{query}*.\nTap a button to receive the file:",
         reply_markup=reply_markup,
         parse_mode="Markdown",
