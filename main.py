@@ -17,7 +17,7 @@ from telegram.ext import (
 # ─────────────────────────────────────────────
 #  CONFIGURATION  ←  Fill these in
 # ─────────────────────────────────────────────
-BOT_TOKEN = "8795852939:AAHi2a9gscuzyUywzgwpE0Qv-9k9LShptf0"   # From @BotFather
+BOT_TOKEN = "8795852939:AAESFRkA1m8jDIUKQicGQKLkCEEpecDXs4Y"   # From @BotFather
 DB_CHANNEL_ID = -1003897916058                    # Your file-storage channel/group ID (negative number)
 # ─────────────────────────────────────────────
 
