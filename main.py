@@ -1,5 +1,5 @@
-import logging
-
+ import logging
+import os
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -15,10 +15,12 @@ from telegram.ext import (
 )
 
 # ─────────────────────────────────────────────
-#  CONFIGURATION  ←  Fill these in
+#  CONFIGURATION
 # ─────────────────────────────────────────────
-BOT_TOKEN = "8795852939:AAESFRkA1m8jDIUKQicGQKLkCEEpecDXs4Y"   # From @BotFather
-DB_CHANNEL_ID = -1003897916058                    # Your file-storage channel/group ID (negative number)
+BOT_TOKEN = "8795852939:AAESFRkA1m8jDIUKQicGQKLkCEEpecDXs4Y"
+DB_CHANNEL_ID = -1002231187887
+WEBHOOK_URL = "https://bot-py-14zm.onrender.com"
+PORT = int(os.environ.get("PORT", 10000))
 # ─────────────────────────────────────────────
 
 logging.basicConfig(
@@ -27,13 +29,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ── In-memory index: {file_name_lower: [{"name": str, "message_id": int, "type": str}]}
 file_index: dict[str, list[dict]] = {}
 
-
-# ═══════════════════════════════════════════════════════════════
-#  INDEXING  –  scan the storage channel and build file_index
-# ═══════════════════════════════════════════════════════════════
 
 def _extract_file_info(message) -> dict | None:
     """Return file metadata dict from a Telegram Message, or None."""
@@ -50,7 +47,6 @@ def _extract_file_info(message) -> dict | None:
         file_obj = message.video
         file_type = "video"
     elif message.photo:
-        # photos don't have a file_name; use caption or a placeholder
         best = message.photo[-1]
         name = (message.caption or "photo").strip()
         return {"name": name, "message_id": message.message_id, "type": "photo",
@@ -74,52 +70,8 @@ def _extract_file_info(message) -> dict | None:
     }
 
 
-async def index_channel(bot, limit: int = 200) -> int:
-    """
-    Walk backwards through DB_CHANNEL_ID and index every file message.
-    Telegram's getChatHistory isn't directly available in Bot API, so we
-    use forward-iteration via message IDs (fast heuristic scan).
-    Returns the number of files indexed.
-    """
-    file_index.clear()
-    indexed = 0
-    # Try message IDs from 1 up to `limit`; gaps are silently ignored.
-    for msg_id in range(1, limit + 1):
-        try:
-            msg = await bot.forward_message(
-                chat_id=DB_CHANNEL_ID,   # forward to itself just to peek
-                from_chat_id=DB_CHANNEL_ID,
-                message_id=msg_id,
-            )
-            info = _extract_file_info(msg)
-            if info:
-                key = info["name"].lower()
-                file_index.setdefault(key, []).append(info)
-                indexed += 1
-            # Delete the forwarded copy immediately to keep channel clean
-            await bot.delete_message(chat_id=DB_CHANNEL_ID, message_id=msg.message_id)
-        except Exception:
-            pass  # message doesn't exist or isn't a file
-
-    logger.info("Indexed %d files from channel %s", indexed, DB_CHANNEL_ID)
-    return indexed
-
-
-async def index_channel_via_updates(bot) -> int:
-    """
-    Alternative: use stored file_ids passed through bot messages.
-    Call /addfile <file_name> while forwarding a file to the bot to register it.
-    This is the recommended approach – see /addfile command below.
-    """
-    return len(file_index)
-
-
-# ═══════════════════════════════════════════════════════════════
-#  SEARCH HELPERS
-# ═══════════════════════════════════════════════════════════════
-
 def search_files(query: str) -> list[dict]:
-    """Return all indexed files whose name contains `query` (case-insensitive)."""
+    """Return all indexed files whose name contains query (case-insensitive)."""
     q = query.lower().strip()
     results = []
     seen_ids = set()
@@ -132,10 +84,6 @@ def search_files(query: str) -> list[dict]:
     return results
 
 
-# ═══════════════════════════════════════════════════════════════
-#  COMMAND HANDLERS
-# ═══════════════════════════════════════════════════════════════
-
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 *Welcome to the File Search Bot!*\n\n"
@@ -143,17 +91,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "and show them as buttons.\n\n"
         "🔧 *Commands:*\n"
         "/start – Show this message\n"
-        "/index – Re-scan the file database\n"
         "/stats – Show how many files are indexed\n"
         "/addfile – Register a file (forward a file to me then use /addfile <name>)",
         parse_mode="Markdown",
     )
-
-
-async def cmd_index(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = await update.message.reply_text("🔄 Scanning database channel, please wait…")
-    count = await index_channel(context.bot)
-    await msg.edit_text(f"✅ Done! Indexed *{count}* files.", parse_mode="Markdown")
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -164,8 +105,6 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ─── /addfile – lets you manually register a file by forwarding it to the bot
-# Usage: forward a file to the bot, then reply to it with /addfile <optional name>
 async def cmd_addfile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Register a file the user forwards/sends to the bot into the in-memory index."""
     target_msg = update.message.reply_to_message or update.message
@@ -178,7 +117,6 @@ async def cmd_addfile(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Override name if user supplied one
     if context.args:
         info["name"] = " ".join(context.args)
 
@@ -189,11 +127,7 @@ async def cmd_addfile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# ═══════════════════════════════════════════════════════════════
-#  MESSAGE HANDLER  –  search when user types a file name
-# ═══════════════════════════════════════════════════════════════
-
-RESULTS_PER_PAGE = 10   # max buttons per message
+RESULTS_PER_PAGE = 10
 
 
 async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -211,13 +145,11 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Build inline keyboard – each button = one file
     keyboard = []
     for r in results[:RESULTS_PER_PAGE]:
         label = f"📄 {r['name']}"
         if len(label) > 60:
             label = label[:57] + "…"
-        # callback_data: "send|<message_id>"  (message_id in DB channel)
         keyboard.append([InlineKeyboardButton(label, callback_data=f"send|{r['message_id']}")])
 
     if len(results) > RESULTS_PER_PAGE:
@@ -228,17 +160,13 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         ])
 
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
         f"🔍 Found *{len(results)}* file(s) matching *{query}*.\nTap a button to receive the file:",
         reply_markup=reply_markup,
         parse_mode="Markdown",
     )
 
-
-# ═══════════════════════════════════════════════════════════════
-#  CALLBACK HANDLER  –  send selected file to user
-# ═══════════════════════════════════════════════════════════════
 
 async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -254,7 +182,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _, msg_id_str = data.split("|", 1)
     msg_id = int(msg_id_str)
 
-    # Find file_id in index
     file_info = None
     for entries in file_index.values():
         for e in entries:
@@ -265,7 +192,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             break
 
     if file_info is None:
-        await query.message.reply_text("⚠️ File not found in index. Try /index to refresh.")
+        await query.message.reply_text("⚠️ File not found in index.")
         return
 
     try:
@@ -296,19 +223,10 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
-# ═══════════════════════════════════════════════════════════════
-#  POST-INIT  –  auto-index on startup
-# ═══════════════════════════════════════════════════════════════
-
 async def post_init(application: Application):
-    logger.info("Bot started. Skipping auto-index (use /index or /addfile to populate).")
-    # Uncomment the line below to auto-scan on startup (slow for large channels):
-    # await index_channel(application.bot)
+    await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info(f"Webhook set to {WEBHOOK_URL}/{BOT_TOKEN}")
 
-
-# ═══════════════════════════════════════════════════════════════
-#  MAIN
-# ═══════════════════════════════════════════════════════════════
 
 def main():
     if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
@@ -323,14 +241,18 @@ def main():
     )
 
     app.add_handler(CommandHandler("start", cmd_start))
-    app.add_handler(CommandHandler("index", cmd_index))
     app.add_handler(CommandHandler("stats", cmd_stats))
     app.add_handler(CommandHandler("addfile", cmd_addfile))
     app.add_handler(CallbackQueryHandler(handle_button))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_search))
 
-    logger.info("Bot is running…")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("Starting webhook server...")
+    app.run_webhook(
+        listen="0.0.0.0",
+        port=PORT,
+        url_path=BOT_TOKEN,
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+    )
 
 
 if __name__ == "__main__":
