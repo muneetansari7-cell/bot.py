@@ -19,7 +19,7 @@ from telegram.ext import (
 # CONFIGURATION
 BOT_TOKEN = os.environ.get("8795852939:AAGXLvB1WlyXAoqT2HBK8LPMrVzjCV39Eig").strip()
 DB_CHANNEL_ID = int(os.environ.get("-1003897916058"))
-WEBHOOK_URL = ("https://bot-py-14zm.onrender.com").rstrip("/")
+WEBHOOK_URL = "https://bot-py-14zm.onrender.com".rstrip("/")
 PORT = int(os.environ.get("PORT", "10000"))
 
 logging.basicConfig(
