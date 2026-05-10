@@ -1,27 +1,26 @@
 import logging
 import os
+from html import escape
+
 from telegram import (
-    Update,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    Update,
 )
 from telegram.ext import (
     Application,
-    CommandHandler,
-    MessageHandler,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
+    MessageHandler,
     filters,
 )
 
-# ─────────────────────────────────────────────
-#  CONFIGURATION
-# ─────────────────────────────────────────────
-BOT_TOKEN = "8795852939:AAESFRkA1m8jDIUKQicGQKLkCEEpecDXs4Y"
-DB_CHANNEL_ID = -1002231187887
-WEBHOOK_URL = "https://bot-py-14zm.onrender.com"
-PORT = int(os.environ.get("PORT", 10000))
-# ─────────────────────────────────────────────
+# CONFIGURATION
+BOT_TOKEN = os.environ.get("8795852939:AAGXLvB1WlyXAoqT2HBK8LPMrVzjCV39Eig").strip()
+DB_CHANNEL_ID = int(os.environ.get("-1003897916058"))
+WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "https://bot-py-14zm.onrender.com").rstrip("/")
+PORT = int(os.environ.get("PORT", "10000"))
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
@@ -30,6 +29,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 file_index: dict[str, list[dict]] = {}
+
+
+def _html(value) -> str:
+    """Escape dynamic text before sending it with Telegram HTML parse mode."""
+    return escape(str(value), quote=False)
 
 
 def _extract_file_info(message) -> dict | None:
@@ -49,8 +53,12 @@ def _extract_file_info(message) -> dict | None:
     elif message.photo:
         best = message.photo[-1]
         name = (message.caption or "photo").strip()
-        return {"name": name, "message_id": message.message_id, "type": "photo",
-                "file_id": best.file_id}
+        return {
+            "name": name,
+            "message_id": message.message_id,
+            "type": "photo",
+            "file_id": best.file_id,
+        }
     elif message.voice:
         file_obj = message.voice
         file_type = "voice"
@@ -72,7 +80,7 @@ def _extract_file_info(message) -> dict | None:
 
 def search_files(query: str) -> list[dict]:
     """Return all indexed files whose name contains query (case-insensitive)."""
-    q = query.lower().strip()
+    q = query.casefold().strip()
     results = []
     seen_ids = set()
     for key, entries in file_index.items():
@@ -86,22 +94,22 @@ def search_files(query: str) -> list[dict]:
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 *Welcome to the File Search Bot!*\n\n"
-        "📁 Just type *any file name* (or part of it) and I'll find matching files from the database "
+        "<b>Welcome to the File Search Bot!</b>\n\n"
+        "Just type <b>any file name</b> (or part of it) and I'll find matching files from the database "
         "and show them as buttons.\n\n"
-        "🔧 *Commands:*\n"
-        "/start – Show this message\n"
-        "/stats – Show how many files are indexed\n"
-        "/addfile – Register a file (forward a file to me then use /addfile <name>)",
-        parse_mode="Markdown",
+        "<b>Commands:</b>\n"
+        "/start - Show this message\n"
+        "/stats - Show how many files are indexed\n"
+        "/addfile - Register a file (forward a file to me then use /addfile &lt;name&gt;)",
+        parse_mode="HTML",
     )
 
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = sum(len(v) for v in file_index.values())
     await update.message.reply_text(
-        f"📊 *Database Stats*\n\nUnique names: *{len(file_index)}*\nTotal files: *{total}*",
-        parse_mode="Markdown",
+        f"<b>Database Stats</b>\n\nUnique names: <b>{len(file_index)}</b>\nTotal files: <b>{total}</b>",
+        parse_mode="HTML",
     )
 
 
@@ -112,7 +120,7 @@ async def cmd_addfile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     info = _extract_file_info(target_msg)
     if info is None:
         await update.message.reply_text(
-            "⚠️ Please forward a file to the bot and then reply to it with /addfile, "
+            "Please forward a file to the bot and then reply to it with /addfile, "
             "or send a file directly and use /addfile in the caption."
         )
         return
@@ -120,10 +128,11 @@ async def cmd_addfile(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         info["name"] = " ".join(context.args)
 
-    key = info["name"].lower()
+    key = info["name"].casefold()
     file_index.setdefault(key, []).append(info)
     await update.message.reply_text(
-        f"✅ Registered *{info['name']}* (type: {info['type']})", parse_mode="Markdown"
+        f"Registered <b>{_html(info['name'])}</b> (type: {_html(info['type'])})",
+        parse_mode="HTML",
     )
 
 
@@ -139,32 +148,37 @@ async def handle_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not results:
         await update.message.reply_text(
-            f"❌ No files found matching *{query}*.\n\n"
+            f"No files found matching <b>{_html(query)}</b>.\n\n"
             "Try a shorter or different keyword.",
-            parse_mode="Markdown",
+            parse_mode="HTML",
         )
         return
 
     keyboard = []
-    for r in results[:RESULTS_PER_PAGE]:
-        label = f"📄 {r['name']}"
+    for result in results[:RESULTS_PER_PAGE]:
+        label = str(result["name"])
         if len(label) > 60:
-            label = label[:57] + "…"
-        keyboard.append([InlineKeyboardButton(label, callback_data=f"send|{r['message_id']}")])
+            label = label[:57] + "..."
+        keyboard.append(
+            [InlineKeyboardButton(label, callback_data=f"send|{result['message_id']}")]
+        )
 
     if len(results) > RESULTS_PER_PAGE:
-        keyboard.append([
-            InlineKeyboardButton(
-                f"… and {len(results) - RESULTS_PER_PAGE} more results",
-                callback_data="noop"
-            )
-        ])
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    f"... and {len(results) - RESULTS_PER_PAGE} more results",
+                    callback_data="noop",
+                )
+            ]
+        )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        f"🔍 Found *{len(results)}* file(s) matching *{query}*.\nTap a button to receive the file:",
+        f"Found <b>{len(results)}</b> file(s) matching <b>{_html(query)}</b>.\n"
+        "Tap a button to receive the file:",
         reply_markup=reply_markup,
-        parse_mode="Markdown",
+        parse_mode="HTML",
     )
 
 
@@ -179,58 +193,62 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not data.startswith("send|"):
         return
 
-    _, msg_id_str = data.split("|", 1)
-    msg_id = int(msg_id_str)
+    try:
+        _, msg_id_str = data.split("|", 1)
+        msg_id = int(msg_id_str)
+    except ValueError:
+        await query.message.reply_text("Invalid button data.")
+        return
 
     file_info = None
     for entries in file_index.values():
-        for e in entries:
-            if e["message_id"] == msg_id:
-                file_info = e
+        for entry in entries:
+            if entry["message_id"] == msg_id:
+                file_info = entry
                 break
         if file_info:
             break
 
     if file_info is None:
-        await query.message.reply_text("⚠️ File not found in index.")
+        await query.message.reply_text("File not found in index.")
         return
 
     try:
         chat_id = query.message.chat_id
         ftype = file_info["type"]
         fid = file_info["file_id"]
-        caption = f"📄 *{file_info['name']}*"
+        caption = f"<b>{_html(file_info['name'])}</b>"
 
         if ftype == "document":
-            await context.bot.send_document(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_document(chat_id, fid, caption=caption, parse_mode="HTML")
         elif ftype == "audio":
-            await context.bot.send_audio(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_audio(chat_id, fid, caption=caption, parse_mode="HTML")
         elif ftype == "video":
-            await context.bot.send_video(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_video(chat_id, fid, caption=caption, parse_mode="HTML")
         elif ftype == "photo":
-            await context.bot.send_photo(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_photo(chat_id, fid, caption=caption, parse_mode="HTML")
         elif ftype == "voice":
-            await context.bot.send_voice(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_voice(chat_id, fid, caption=caption, parse_mode="HTML")
         elif ftype == "video_note":
             await context.bot.send_video_note(chat_id, fid)
         else:
-            await context.bot.send_document(chat_id, fid, caption=caption, parse_mode="Markdown")
+            await context.bot.send_document(chat_id, fid, caption=caption, parse_mode="HTML")
 
-    except Exception as e:
-        logger.error("Failed to send file: %s", e)
+    except Exception as exc:
+        logger.error("Failed to send file: %s", exc)
         await query.message.reply_text(
-            "❌ Could not send the file. It may have been deleted from the database channel."
+            "Could not send the file. It may have been deleted from the database channel."
         )
 
 
 async def post_init(application: Application):
     await application.bot.set_webhook(url=f"{WEBHOOK_URL}/{BOT_TOKEN}")
-    logger.info(f"Webhook set to {WEBHOOK_URL}/{BOT_TOKEN}")
+    logger.info("Webhook set to %s/%s", WEBHOOK_URL, BOT_TOKEN)
 
 
 def main():
-    if not BOT_TOKEN or BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-        print("❌ Please set BOT_TOKEN in the script before running.")
+    if not BOT_TOKEN:
+        print("Please set BOT_TOKEN in the environment before running.")
         return
 
     app = (
@@ -251,9 +269,10 @@ def main():
         listen="0.0.0.0",
         port=PORT,
         url_path=BOT_TOKEN,
-        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}"
+        webhook_url=f"{WEBHOOK_URL}/{BOT_TOKEN}",
     )
 
 
 if __name__ == "__main__":
     main()
+    
